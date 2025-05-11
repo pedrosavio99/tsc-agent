@@ -86,12 +86,17 @@
             if (!isRecording) {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    mediaRecorder = new MediaRecorder(stream);
+                    const mimeType = 'audio/webm;codecs=opus';
+                    if (!MediaRecorder.isTypeSupported(mimeType)) {
+                        alert("Formato de áudio não suportado pelo navegador. Use Chrome ou Firefox.");
+                        return;
+                    }
+                    mediaRecorder = new MediaRecorder(stream, { mimeType });
                     audioChunks = [];
 
                     mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
                     mediaRecorder.onstop = async () => {
-                        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+                        const audioBlob = new Blob(audioChunks, { type: mimeType });
                         const formData = new FormData();
                         formData.append("file", audioBlob, "audio.webm");
                         formData.append("lang", languageSelect.value);
@@ -99,18 +104,36 @@
                         setLoading(true); // Mostrar loading
 
                         try {
+                            const controller = new AbortController();
+                            const timeoutId = setTimeout(() => controller.abort(), 15000); // Timeout de 15 segundos
+
                             const response = await fetch("/transcribe", {
                                 method: "POST",
-                                body: formData
+                                body: formData,
+                                signal: controller.signal
                             });
+                            clearTimeout(timeoutId);
+
+                            if (!response.ok) {
+                                const errorText = await response.text();
+                                throw new Error(`Erro HTTP ${response.status}: ${errorText}`);
+                            }
+
                             const result = await response.json();
                             if (result.transcribed_text) {
                                 textInput.value = result.transcribed_text;
                             } else {
-                                alert("Erro na transcrição.");
+                                throw new Error("Nenhuma transcrição retornada.");
                             }
                         } catch (err) {
-                            alert("Erro ao transcrever: " + err.message);
+                            let errorMessage = err.message;
+                            if (err.name === 'AbortError') {
+                                errorMessage = "A transcrição demorou muito. Tente um áudio mais curto.";
+                            } else if (err.message.includes("Unexpected end of JSON input")) {
+                                errorMessage = "Erro no servidor ao processar o áudio. Tente novamente.";
+                            }
+                            alert(`Erro ao transcrever: ${errorMessage}`);
+                            console.error(err);
                         } finally {
                             setLoading(false); // Esconder loading
                         }
@@ -122,6 +145,7 @@
                     recordButton.textContent = "⏹️";
                 } catch (err) {
                     alert("Erro ao acessar o microfone: " + err.message);
+                    setLoading(false);
                 }
             } else {
                 mediaRecorder.stop();
@@ -162,6 +186,9 @@
                     method: "POST",
                     body: formData
                 });
+                if (!chatResponse.ok) {
+                    throw new Error(`Erro HTTP ${chatResponse.status}: ${await chatResponse.text()}`);
+                }
                 const chatResult = await chatResponse.json();
 
                 if (chatResult.error) {
@@ -180,11 +207,15 @@
                     headers: { "Content-Type": "application/x-www-form-urlencoded" },
                     body: `text=${encodeURIComponent(chatResult.answer)}&language=${language}`
                 });
+                if (!audioResponse.ok) {
+                    throw new Error(`Erro HTTP ${audioResponse.status}: ${await audioResponse.text()}`);
+                }
                 const blob = await audioResponse.blob();
                 audioPlayer.src = URL.createObjectURL(blob);
                 audioPlayer.play();
             } catch (error) {
                 alert("Erro ao processar a requisição: " + error.message);
+                console.error(error);
             }
 
             textInput.value = "";
