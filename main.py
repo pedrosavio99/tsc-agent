@@ -15,17 +15,15 @@ app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# Não carregar modelos no início para economizar memória
-model_pt = None
-model_en = None
+# Carregar modelo em inglês na inicialização
+model_en = whisper.load_model("tiny.en")  # Carrega tiny.en no startup
+model_pt = None  # Português sob demanda
 
-# Função para carregar modelo sob demanda
+# Função para carregar modelo (apenas português, se necessário)
 def load_model(lang: str):
     global model_pt, model_en
     if lang == "pt" and model_pt is None:
         model_pt = whisper.load_model("tiny")  # Modelo menor para português
-    elif lang == "en" and model_en is None:
-        model_en = whisper.load_model("tiny.en")  # Modelo menor para inglês
     return model_pt if lang == "pt" else model_en
 
 # Chave da API do Gemini (hardcoded, conforme solicitado)
@@ -67,7 +65,7 @@ async def transcribe_audio(file: UploadFile = File(...), lang: str = Form(...)):
         os.remove(tmp_path)
         raise HTTPException(status_code=500, detail=f"Erro na conversão de áudio: {str(e)}")
 
-    # Carregar o modelo sob demanda
+    # Carregar o modelo (inglês já está carregado, português sob demanda)
     try:
         model = load_model(lang)
         if model is None:

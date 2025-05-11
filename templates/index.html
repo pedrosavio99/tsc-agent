@@ -15,8 +15,8 @@
                 <button type="button" id="recordButton" class="record-button">🎙️</button>
             </div>
             <select id="language">
+                <option value="en" selected>Inglês</option>
                 <option value="pt">Português</option>
-                <option value="en">Inglês</option>
             </select>
             <select id="context">
                 <option value="job_interview">Entrevista de Emprego</option>
@@ -29,6 +29,7 @@
                 <button type="button" id="clearHistory">Limpar Histórico</button>
             </div>
         </div>
+        <div id="loading" class="loading" style="display: none;">Transcrevendo... <span class="spinner"></span></div>
         <audio id="audioPlayer" controls></audio>
         <div class="chat-messages" id="chatMessages"></div>
     </div>
@@ -38,6 +39,7 @@
         let mediaRecorder;
         let audioChunks = [];
         let isRecording = false;
+        let isTranscribing = false;
 
         // Elementos do DOM
         const textInput = document.getElementById("text");
@@ -49,6 +51,7 @@
         const customContext = document.getElementById("customContext");
         const chatMessages = document.getElementById("chatMessages");
         const audioPlayer = document.getElementById("audioPlayer");
+        const loadingIndicator = document.getElementById("loading");
 
         // Atualizar interface de chat
         function updateChatMessages() {
@@ -67,8 +70,19 @@
             customContext.style.display = e.target.value === "custom" ? "block" : "none";
         });
 
+        // Controlar estado de carregamento
+        function setLoading(isLoading) {
+            isTranscribing = isLoading;
+            loadingIndicator.style.display = isLoading ? "block" : "none";
+            recordButton.disabled = isLoading;
+            textInput.disabled = isLoading;
+            sendButton.disabled = isLoading;
+        }
+
         // Iniciar/parar gravação
         recordButton.addEventListener("click", async () => {
+            if (isTranscribing) return; // Impede gravação durante transcrição
+
             if (!isRecording) {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -81,6 +95,8 @@
                         const formData = new FormData();
                         formData.append("file", audioBlob, "audio.webm");
                         formData.append("lang", languageSelect.value);
+
+                        setLoading(true); // Mostrar loading
 
                         try {
                             const response = await fetch("/transcribe", {
@@ -95,6 +111,8 @@
                             }
                         } catch (err) {
                             alert("Erro ao transcrever: " + err.message);
+                        } finally {
+                            setLoading(false); // Esconder loading
                         }
                     };
 
@@ -115,6 +133,8 @@
 
         // Enviar mensagem
         sendButton.addEventListener("click", async () => {
+            if (isTranscribing) return; // Impede envio durante transcrição
+
             const text = textInput.value.trim();
             const language = languageSelect.value;
             const context = contextSelect.value;
