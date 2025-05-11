@@ -15,13 +15,27 @@ app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# Carregar modelos Whisper
-model_pt = whisper.load_model("base")  # Modelo português
-model_en = whisper.load_model("base.en")  # Modelo inglês
+# Não carregar modelos no início para economizar memória
+model_pt = None
+model_en = None
 
-# Configurações da API do Gemini
+# Função para carregar modelo sob demanda
+def load_model(lang: str):
+    global model_pt, model_en
+    if lang == "pt" and model_pt is None:
+        model_pt = whisper.load_model("tiny")  # Modelo menor para português
+    elif lang == "en" and model_en is None:
+        model_en = whisper.load_model("tiny.en")  # Modelo menor para inglês
+    return model_pt if lang == "pt" else model_en
+
+# Chave da API do Gemini (hardcoded, conforme solicitado)
 GEMINI_API_KEY = "AIzaSyBhi0i76UQGAR7YuduQMS74BfCBjdsGQr4"
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent"
+
+# Health check para o Render
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
 
 @app.get("/", response_class=HTMLResponse)
 async def get(request: Request):
@@ -53,14 +67,12 @@ async def transcribe_audio(file: UploadFile = File(...), lang: str = Form(...)):
         os.remove(tmp_path)
         raise HTTPException(status_code=500, detail=f"Erro na conversão de áudio: {str(e)}")
 
-    # Transcrever com o modelo apropriado
+    # Carregar o modelo sob demanda
     try:
-        if lang == "pt":
-            result = model_pt.transcribe(wav_path)
-        elif lang == "en":
-            result = model_en.transcribe(wav_path)
-        else:
+        model = load_model(lang)
+        if model is None:
             raise HTTPException(status_code=400, detail="Idioma não suportado.")
+        result = model.transcribe(wav_path)
         transcribed_text = result["text"]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro na transcrição: {str(e)}")

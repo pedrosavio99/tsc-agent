@@ -18,8 +18,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copia o código da aplicação
 COPY . .
 
-# Expõe a porta que o Render usará
-EXPOSE 8000
+# Expõe a porta definida pela variável de ambiente PORT (padrão 10000 no Render)
+EXPOSE 10000
 
-# Comando para rodar a aplicação FastAPI
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Comando para rodar a aplicação FastAPI usando a variável PORT
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port $PORT"]
