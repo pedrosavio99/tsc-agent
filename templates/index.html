@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text, Speech & Chat</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h2>Text, Speech & Chat</h2>
+        <div class="input-area">
+            <div class="chat-input">
+                <textarea id="text" placeholder="Digite ou grave sua mensagem aqui" required></textarea>
+                <button type="button" id="recordButton" class="record-button">🎙️</button>
+            </div>
+            <select id="language">
+                <option value="pt">Português</option>
+                <option value="en">Inglês</option>
+            </select>
+            <select id="context">
+                <option value="job_interview">Entrevista de Emprego</option>
+                <option value="airport">Aeroporto</option>
+                <option value="custom">Personalizado</option>
+            </select>
+            <textarea id="customContext" placeholder="Digite um contexto personalizado" style="display: none;"></textarea>
+            <div class="action-buttons">
+                <button type="button" id="sendButton">Enviar</button>
+                <button type="button" id="clearHistory">Limpar Histórico</button>
+            </div>
+        </div>
+        <audio id="audioPlayer" controls></audio>
+        <div class="chat-messages" id="chatMessages"></div>
+    </div>
+    <script>
+        // Carregar histórico do localStorage
+        let history = JSON.parse(localStorage.getItem("chatHistory")) || [];
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
+
+        // Elementos do DOM
+        const textInput = document.getElementById("text");
+        const recordButton = document.getElementById("recordButton");
+        const sendButton = document.getElementById("sendButton");
+        const clearHistoryButton = document.getElementById("clearHistory");
+        const languageSelect = document.getElementById("language");
+        const contextSelect = document.getElementById("context");
+        const customContext = document.getElementById("customContext");
+        const chatMessages = document.getElementById("chatMessages");
+        const audioPlayer = document.getElementById("audioPlayer");
+
+        // Atualizar interface de chat
+        function updateChatMessages() {
+            chatMessages.innerHTML = "";
+            history.forEach(msg => {
+                const div = document.createElement("div");
+                div.className = `chat-message ${msg.type}`;
+                div.textContent = msg.text;
+                chatMessages.appendChild(div);
+            });
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Mostrar/esconder contexto personalizado
+        contextSelect.addEventListener("change", (e) => {
+            customContext.style.display = e.target.value === "custom" ? "block" : "none";
+        });
+
+        // Iniciar/parar gravação
+        recordButton.addEventListener("click", async () => {
+            if (!isRecording) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+
+                    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                    mediaRecorder.onstop = async () => {
+                        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+                        const formData = new FormData();
+                        formData.append("file", audioBlob, "audio.webm");
+                        formData.append("lang", languageSelect.value);
+
+                        try {
+                            const response = await fetch("/transcribe", {
+                                method: "POST",
+                                body: formData
+                            });
+                            const result = await response.json();
+                            if (result.transcribed_text) {
+                                textInput.value = result.transcribed_text;
+                            } else {
+                                alert("Erro na transcrição.");
+                            }
+                        } catch (err) {
+                            alert("Erro ao transcrever: " + err.message);
+                        }
+                    };
+
+                    mediaRecorder.start();
+                    isRecording = true;
+                    recordButton.classList.add("recording");
+                    recordButton.textContent = "⏹️";
+                } catch (err) {
+                    alert("Erro ao acessar o microfone: " + err.message);
+                }
+            } else {
+                mediaRecorder.stop();
+                isRecording = false;
+                recordButton.classList.remove("recording");
+                recordButton.textContent = "🎙️";
+            }
+        });
+
+        // Enviar mensagem
+        sendButton.addEventListener("click", async () => {
+            const text = textInput.value.trim();
+            const language = languageSelect.value;
+            const context = contextSelect.value;
+            const customContextValue = customContext.value.trim();
+
+            if (!text) {
+                alert("Por favor, digite ou grave uma mensagem.");
+                return;
+            }
+
+            // Adicionar mensagem do usuário ao histórico
+            history.push({ type: "user", text });
+            updateChatMessages();
+            localStorage.setItem("chatHistory", JSON.stringify(history));
+
+            // Enviar para a API de chat
+            const formData = new FormData();
+            formData.append("text", text);
+            formData.append("language", language);
+            formData.append("context", context === "custom" ? customContextValue : context);
+            formData.append("history", history.map(msg => `${msg.type === "user" ? "Usuário" : "Bot"}: ${msg.text}`).join("\n"));
+
+            try {
+                const chatResponse = await fetch("/chat", {
+                    method: "POST",
+                    body: formData
+                });
+                const chatResult = await chatResponse.json();
+
+                if (chatResult.error) {
+                    alert(chatResult.error);
+                    return;
+                }
+
+                // Adicionar resposta do bot ao histórico
+                history.push({ type: "bot", text: chatResult.answer });
+                updateChatMessages();
+                localStorage.setItem("chatHistory", JSON.stringify(history));
+
+                // Gerar áudio da resposta
+                const audioResponse = await fetch("/generate_audio", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: `text=${encodeURIComponent(chatResult.answer)}&language=${language}`
+                });
+                const blob = await audioResponse.blob();
+                audioPlayer.src = URL.createObjectURL(blob);
+                audioPlayer.play();
+            } catch (error) {
+                alert("Erro ao processar a requisição: " + error.message);
+            }
+
+            textInput.value = "";
+        });
+
+        // Limpar histórico
+        clearHistoryButton.addEventListener("click", () => {
+            history = [];
+            localStorage.removeItem("chatHistory");
+            updateChatMessages();
+        });
+
+        // Carregar histórico ao iniciar
+        updateChatMessages();
+    </script>
+</body>
+</html>
