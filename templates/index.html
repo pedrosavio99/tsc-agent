@@ -105,7 +105,7 @@
 
                         try {
                             const controller = new AbortController();
-                            const timeoutId = setTimeout(() => controller.abort(), 15000); // Timeout de 15 segundos
+                            const timeoutId = setTimeout(() => controller.abort(), 35000); // Timeout de 35 segundos
 
                             const response = await fetch("/transcribe", {
                                 method: "POST",
