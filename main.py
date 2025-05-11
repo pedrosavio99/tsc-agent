@@ -9,7 +9,6 @@ import os
 import requests
 from gtts import gTTS
 import logging
-import subprocess
 import time
 
 # Configurar logging
@@ -88,14 +87,11 @@ async def transcribe_audio(file: UploadFile = File(...), lang: str = Form(...)):
                 t=30,  # Limitar a 30 segundos
                 loglevel="error"
             )
-            ffmpeg.run(stream, overwrite_output=True, timeout=10)  # Timeout de 10 segundos
+            ffmpeg.run(stream, overwrite_output=True)  # Removido o argumento timeout
             logger.info(f"Conversão concluída: {wav_path}")
         except ffmpeg.Error as e:
             logger.error(f"Erro na conversão de áudio: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Erro na conversão de áudio: {str(e)}")
-        except subprocess.TimeoutExpired:
-            logger.error("Timeout na conversão de áudio")
-            raise HTTPException(status_code=500, detail="Conversão de áudio demorou muito.")
 
         # Verificar se o arquivo WAV foi criado
         if not os.path.exists(wav_path):
@@ -109,7 +105,7 @@ async def transcribe_audio(file: UploadFile = File(...), lang: str = Form(...)):
             logger.error("Idioma não suportado")
             raise HTTPException(status_code=400, detail="Idioma não suportado.")
 
-        # Transcrição com timeout
+        # Transcrição
         logger.info("Iniciando transcrição")
         try:
             result = model.transcribe(wav_path)
