@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# Configurar templates e arquivos estáticos
+# Configurar templates e arquivos estáticos aqui so pra marcar o init
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
